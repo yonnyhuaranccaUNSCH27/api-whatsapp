@@ -10,8 +10,10 @@ const app = express();
 // Configurar CORS
 app.use(cors({
   origin: [
-    'http://localhost:4200',  
-    'http://localhost:82',     
+    //'http://localhost:4200',  
+    //'http://localhost:82',
+    'https://meerkadito.com/bk',
+    'https://home.meerkadito.com',  
   ],
   credentials: true
 }));
