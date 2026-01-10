@@ -3,7 +3,8 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcodeTerminal = require('qrcode-terminal');
 const QRCode = require('qrcode'); 
 const cors = require('cors');
-const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 
@@ -14,6 +15,8 @@ app.use(cors({
     //'http://localhost:82',
     'https://meerkadito.com/bk',
     'https://home.meerkadito.com',  
+    'http://localhost:4200',  
+    'http://localhost:82', 
   ],
   credentials: true
 }));
@@ -25,10 +28,31 @@ const sessions = new Map();
 
 console.log(`Iniciando Servidor WhatsApp Web API`);
 
-// Endpoint para iniciar sesión de WhatsApp
+// --- FUNCIONES AUXILIARES ---
+
+const formatNumber = (number) => {
+    let cleanNumber = number.replace(/\D/g, '');
+    if (cleanNumber.length === 9 && cleanNumber.startsWith('9')) {
+        cleanNumber = `51${cleanNumber}`;
+    }
+    return cleanNumber;
+};
+
+// Función auxiliar para obtener foto con timeout más corto
+const getProfilePicWithTimeout = async (contact) => {
+    try {
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 500));
+        const picPromise = contact.getProfilePicUrl();
+        return await Promise.race([picPromise, timeout]);
+    } catch (e) {
+        return null; 
+    }
+};
+
+// --- ENDPOINTS ---
+
 app.post('/session/start/:sessionId', async (req, res) => {
     const sessionId = req.params.sessionId;
-    
     console.log('Iniciando sesión para:', sessionId);
     
     if (sessions.has(sessionId)) {
@@ -46,6 +70,7 @@ app.post('/session/start/:sessionId', async (req, res) => {
             authStrategy: new LocalAuth({ clientId: sessionId }),
             puppeteer: {
                 headless: true,
+                protocolTimeout: 300000, // 5 minutos
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -53,10 +78,9 @@ app.post('/session/start/:sessionId', async (req, res) => {
                     '--disable-accelerated-2d-canvas',
                     '--no-first-run',
                     '--no-zygote',
-                    // '--single-process',
                     '--disable-gpu'
                 ],
-                timeout: 60000
+                timeout: 120000
             }
         });
 
@@ -70,36 +94,19 @@ app.post('/session/start/:sessionId', async (req, res) => {
 
         sessions.set(sessionId, sessionData);
 
-        // EVENTO: QR generado
         client.on('qr', async (qr) => {
-            console.log(' QR generado para:', sessionId);
-            
-            // Mostrar en consola (terminal)
+            console.log('📱 QR generado para:', sessionId);
             qrcodeTerminal.generate(qr, { small: true });
-            
             try {
-                //  CONVERTIR el texto del QR a imagen PNG en base64
                 const qrImageBase64 = await QRCode.toDataURL(qr, {
-                    errorCorrectionLevel: 'H',
-                    type: 'image/png',
-                    width: 400,
-                    margin: 1
+                    errorCorrectionLevel: 'H', type: 'image/png', width: 400, margin: 1
                 });
-                
-                // Extraer solo el base64 (sin el prefijo "data:image/png;base64,")
-                const base64Data = qrImageBase64.replace(/^data:image\/png;base64,/, '');
-                
                 sessionData.qr = qr;
-                sessionData.qrBase64 = base64Data;
+                sessionData.qrBase64 = qrImageBase64.replace(/^data:image\/png;base64,/, '');
                 sessionData.status = 'qr_generated';
-                
-                console.log(' QR convertido a imagen PNG (base64 length:', base64Data.length, ')');
-            } catch (err) {
-                console.error(' Error generando imagen QR:', err);
-            }
+            } catch (err) { console.error(' Error QR:', err); }
         });
 
-        // Evento: Cliente listo
         client.on('ready', () => {
             console.log('✓ Cliente WhatsApp listo:', sessionId);
             sessionData.status = 'ready';
@@ -111,388 +118,289 @@ app.post('/session/start/:sessionId', async (req, res) => {
             };
         });
 
-        // Evento: Autenticación exitosa
         client.on('authenticated', () => {
-            console.log('✓ Autenticado:', sessionId);
+            console.log('Autenticado:', sessionId);
             sessionData.status = 'authenticated';
         });
 
-        // Evento: Error de autenticación
-        client.on('auth_failure', (msg) => {
-            console.error('✗ Error de autenticación:', sessionId, msg);
-            sessionData.status = 'auth_failure';
-        });
-
-        // Evento: Desconexión
-        client.on('disconnected', (reason) => {
-            console.log('✗ Desconectado:', sessionId, reason);
-            sessionData.status = 'disconnected';
-        });
-
-        // Evento: Mensaje recibido
-        client.on('message', async (message) => {
-            console.log(' Mensaje recibido:', message.from, '->', message.body);
-        });
-
+        client.on('auth_failure', () => sessionData.status = 'auth_failure');
+        client.on('disconnected', () => sessionData.status = 'disconnected');
+        
         await client.initialize();
 
-        res.json({ 
-            success: true, 
-            message: 'Sesión iniciada correctamente',
-            sessionId: sessionId,
-            status: 'initializing'
-        });
+        res.json({ success: true, message: 'Iniciando...', sessionId, status: 'initializing' });
 
     } catch (error) {
-        console.error('Error al iniciar sesión:', error);
         sessions.delete(sessionId);
-        res.status(500).json({ 
-            success: false, 
-            error: error.message 
-        });
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Endpoint para obtener el QR
 app.get('/session/qr/:sessionId', (req, res) => {
-    const sessionId = req.params.sessionId;
-    const session = sessions.get(sessionId);
-    
-    if (!session) {
-        return res.status(404).json({ 
-            success: false,
-            error: 'Sesión no encontrada' 
-        });
-    }
-    
-    res.json({ 
-        success: true,
-        qr: session.qr,
-        base64: session.qrBase64,
-        status: session.status,
-        connected: session.status === 'ready',
-        info: session.info
-    });
+    const session = sessions.get(req.params.sessionId);
+    if (!session) return res.status(404).json({ error: 'No existe' });
+    res.json({ success: true, qr: session.qr, base64: session.qrBase64, status: session.status, connected: session.status === 'ready', info: session.info });
 });
 
-// Endpoint para verificar estado de sesión
 app.get('/session/status/:sessionId', (req, res) => {
-    const sessionId = req.params.sessionId;
-    const session = sessions.get(sessionId);
-    
-    if (!session) {
-        return res.status(404).json({ 
-            success: false,
-            error: 'Sesión no encontrada' 
-        });
-    }
-    
-    res.json({ 
-        success: true,
-        status: session.status,
-        connected: session.status === 'ready',
-        info: session.info
-    });
+    const session = sessions.get(req.params.sessionId);
+    if (!session) return res.status(404).json({ error: 'No existe' });
+    res.json({ success: true, status: session.status, connected: session.status === 'ready', info: session.info });
 });
 
-// Endpoint para cerrar sesión 
 app.post('/session/close/:sessionId', async (req, res) => {
     const sessionId = req.params.sessionId;
     const session = sessions.get(sessionId);
-    
-    if (!session) {
-        return res.json({ 
-            success: true,
-            message: 'La sesión ya estaba cerrada o no existía' 
-        });
-    }
+    if (!session) return res.json({ success: true });
     
     try {
         if (session.client) {
-            await session.client.destroy();
+            try { await session.client.logout(); } catch (e) {}
+            try { await session.client.destroy(); } catch (e) {}
         }
         sessions.delete(sessionId);
-        console.log('✓ Sesión cerrada correctamente:', sessionId);
-        
-        res.json({ 
-            success: true,
-            message: 'Sesión cerrada correctamente' 
-        });
-    } catch (error) {
-        console.error('Error al cerrar sesión:', error);
+        try {
+            const p = path.join(__dirname, '.wwebjs_auth', `session-${sessionId}`);
+            if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+        } catch (e) {}
+        res.json({ success: true });
+    } catch (e) {
         sessions.delete(sessionId);
-        
-        res.json({ 
-            success: true, 
-            message: 'Sesión forzada a cerrar (hubo un error interno pero se limpió)' 
-        });
+        res.json({ success: true });
     }
 });
 
-
-// Endpoint para obtener chats
+// ENDPOINT OPTIMIZADO PARA CHATS - LA CLAVE ESTÁ AQUÍ
 app.get('/chats/:sessionId', async (req, res) => {
-    const sessionId = req.params.sessionId;
-    const session = sessions.get(sessionId);
-    
-    // 1. Validaciones básicas
-    if (!session) {
-        return res.status(404).json({ success: false, error: 'Sesión no encontrada' });
-    }
-    if (session.status !== 'ready' || !session.client) {
-        return res.status(400).json({ success: false, error: 'Sesión no lista (Client not ready)' });
+    const session = sessions.get(req.params.sessionId);
+    if (!session || session.status !== 'ready') {
+        return res.status(400).json({ error: 'Sesión no lista' });
     }
     
+    const startTime = Date.now();
+    console.log(' Obteniendo chats para:', req.params.sessionId);
+
     try {
-        console.log(` Obteniendo chats para sesión: ${sessionId}...`);
-        
-        // 2. Obtener lista de chats
-        const chats = await session.client.getChats();
-        const LIMIT_PROFILE_PICS = 50; 
-        const formattedChats = [];
-        
-        console.log(`✓ Se encontraron ${chats.length} chats. Procesando primeros ${LIMIT_PROFILE_PICS} con fotos...`);
-
-        for (let i = 0; i < chats.length; i++) {
-            const chat = chats[i];
-            let profilePicBase64 = null;
-
-            // Solo intentamos descargar foto para los primeros N chats para velocidad
-            if (i < LIMIT_PROFILE_PICS) {
-                try {
-                    let profilePicUrl = null;
-                    
-                    const contact = await chat.getContact();
-                    
-                    // Verificamos si el método existe antes de ejecutarlo
-                    if (contact && typeof contact.getProfilePicUrl === 'function') {
-                        profilePicUrl = await contact.getProfilePicUrl();
-                    }
-
-                    // Si conseguimos URL, descargamos la imagen
-                    if (profilePicUrl) {
-                        const response = await axios.get(profilePicUrl, {
-                            responseType: 'arraybuffer',
-                            timeout: 4000, 
-                            headers: { 
-                                'User-Agent': 'Mozilla/5.0' 
-                            }
-                        });
-
-                        const buffer = Buffer.from(response.data);
-                        profilePicBase64 = `data:image/jpeg;base64,${buffer.toString('base64')}`;
-                    } 
-                } catch (picErr) {
-
-                }
-
-                // Pequeña pausa para no bloquear el event loop de Node
-                if (i < LIMIT_PROFILE_PICS - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 100)); 
-                }
-            }
-
-            // 3. Formatear el objeto final
-            formattedChats.push({
-                id: chat.id._serialized,
-                name: chat.name || chat.id.user || 'Desconocido',
-                isGroup: chat.isGroup,
-                unreadCount: chat.unreadCount,
-                timestamp: chat.timestamp,
-                lastMessage: chat.lastMessage ? chat.lastMessage.body : null,
-                profilePic: profilePicBase64 
-            });
-        }
-        
-        const conFotos = formattedChats.filter(c => c.profilePic).length;
-        console.log(`✓ Chats procesados exitosamente: ${formattedChats.length} (Fotos cargadas: ${conFotos})`);
-        
-        res.json({ 
-            success: true, 
-            chats: formattedChats
+        // SOLUCIÓN 1: Usar puppeeter.page directamente es más rápido
+        const chats = await session.client.pupPage.evaluate(() => {
+            const Store = window.require('WAWebCollections');
+            return Store.Chat.getModelsArray()
+                .slice(0, 20) // Solo los primeros 20
+                .map(chat => ({
+                    id: chat.id._serialized,
+                    name: chat.formattedTitle || chat.name,
+                    isGroup: chat.isGroup,
+                    unreadCount: chat.unreadCount,
+                    timestamp: chat.t,
+                    lastMessage: chat.lastReceivedKey ? chat.msgs.get(chat.lastReceivedKey)?.body : null
+                }));
         });
 
+        // SOLUCIÓN 2: Obtener fotos de perfil en paralelo pero con límite
+        const chatsWithPics = await Promise.all(
+            chats.map(async (chat) => {
+                let profilePic = null;
+                
+                // Solo obtener foto si no es grupo (más rápido)
+                if (!chat.isGroup) {
+                    try {
+                        const contact = await session.client.getContactById(chat.id);
+                        profilePic = await getProfilePicWithTimeout(contact);
+                    } catch (err) {
+                        // Ignorar errores
+                    }
+                }
+                
+                return {
+                    ...chat,
+                    profilePic
+                };
+            })
+        );
+        
+        const endTime = Date.now();
+        console.log(` Chats obtenidos en ${endTime - startTime}ms`);
+        
+        res.json({ success: true, chats: chatsWithPics });
     } catch (error) {
-        console.error('✗ Error fatal al obtener chats:', error);
+        console.error(' Error obteniendo chats:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Endpoint para obtener mensajes de un chat (CON SOPORTE PARA IMÁGENES)
+// ENDPOINT MEJORADO PARA MENSAJES CON SOPORTE DE AUDIO
 app.get('/messages/:sessionId/:chatId', async (req, res) => {
-    const sessionId = req.params.sessionId;
-    const chatId = req.params.chatId;
+    const { sessionId, chatId } = req.params;
     const session = sessions.get(sessionId);
-    
     if (!session || session.status !== 'ready') {
-        return res.status(400).json({ success: false, error: 'Sesión no lista' });
+        return res.status(400).json({ error: 'No ready' });
     }
     
     try {
-        let finalChatId = chatId.includes('@') ? chatId : `${chatId}@c.us`;
-        console.log(` Buscando chat con ID: ${finalChatId}`);
-
-        const chat = await session.client.getChatById(finalChatId);
-        const messages = await chat.fetchMessages({ limit: 20 });
+        const finalId = chatId.includes('@') ? chatId : `${chatId}@c.us`;
+        const chat = await session.client.getChatById(finalId);
         
-        const formattedMessages = await Promise.all(messages.map(async (msg) => {
-            let mediaData = null;
-
+        const messages = await chat.fetchMessages({ limit: 15 });
+        
+        const formatted = await Promise.all(messages.map(async (msg) => {
+            let media = null;
+            
+            // SOLUCIÓN: Detectar y descargar audios correctamente
             if (msg.hasMedia) {
                 try {
-                    const media = await msg.downloadMedia();
-                    if (media) {
-                        mediaData = {
-                            mimetype: media.mimetype,
-                            data: media.data, 
-                            filename: media.filename
+                    const mediaData = await msg.downloadMedia();
+                    if (mediaData) {
+                        media = { 
+                            mimetype: mediaData.mimetype, 
+                            data: mediaData.data, 
+                            filename: mediaData.filename || 'audio.ogg'
                         };
                     }
-                } catch (err) {
-                    console.log(`No se pudo descargar media del mensaje ${msg.id._serialized}`);
+                } catch (e) {
+                    console.error('Error descargando media:', e);
                 }
             }
-
+            
             return {
                 id: msg.id._serialized,
                 body: msg.body,
-                type: msg.type,
+                type: msg.type, // Incluye 'ptt' para audios
                 timestamp: msg.timestamp,
                 from: msg.from,
-                to: msg.to,
                 fromMe: msg.fromMe,
                 hasMedia: msg.hasMedia,
-                media: mediaData, 
+                media: media,
                 ack: msg.ack,
-                author: msg.author
+                // Agregar flag específico para audios
+                isVoice: msg.type === 'ptt' || msg.type === 'audio'
             };
         }));
         
+        res.json({ success: true, messages: formatted });
+    } catch (e) { 
+        console.error('Error en mensajes:', e);
+        res.status(500).json({ error: e.message }); 
+    }
+});
+
+app.post('/check-number', async (req, res) => {
+    const { sessionId, phone } = req.body;
+    const session = sessions.get(sessionId);
+    if (!session || session.status !== 'ready') return res.status(400).json({ error: 'No ready' });
+
+    try {
+        const formatted = formatNumber(phone);
+        const contact = await session.client.getNumberId(formatted);
         res.json({ 
             success: true, 
-            messages: formattedMessages
+            exists: !!contact, 
+            id: contact ? contact._serialized : null,
+            formattedNumber: formatted 
         });
-
-    } catch (error) {
-        console.error('Error al obtener mensajes:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/send-message', async (req, res) => {
-    const { sessionId, session, number, phone, message } = req.body;
-    
-    const targetSession = sessionId || session;
+    const { sessionId, session: sessAlt, number, phone, message } = req.body;
+    const targetSession = sessionId || sessAlt;
     const targetPhone = number || phone;
     
-    if (!targetSession || !targetPhone || !message) {
-        return res.status(400).json({ 
-            success: false, 
-            error: 'Faltan datos requeridos (session, phone, message)' 
-        });
-    }
+    const currSession = sessions.get(targetSession);
+    if (!currSession || currSession.status !== 'ready') return res.status(400).json({ error: 'Error sesión' });
 
-    const currentSession = sessions.get(targetSession);
-    
-    if (!currentSession) {
-        return res.status(404).json({ 
-            success: false, 
-            error: 'Sesión no encontrada' 
-        });
-    }
-    
-    if (currentSession.status !== 'ready') {
-        return res.status(400).json({ 
-            success: false, 
-            error: 'Sesión no está lista. Estado actual: ' + currentSession.status 
-        });
-    }
-    
     try {
-        // Detectar si es un grupo o contacto individual
-        let chatId;
-        
-        if (targetPhone.includes('@g.us')) {
-            // Ya es un ID de grupo completo
-            chatId = targetPhone;
-        } else if (targetPhone.includes('@c.us')) {
-            // Ya es un ID de contacto completo
-            chatId = targetPhone;
-        } else {
-            // Es solo el número, asumir contacto individual
-            chatId = `${targetPhone}@c.us`;
+        let chatId = targetPhone;
+        if (!targetPhone.includes('@')) {
+            const formatted = formatNumber(targetPhone);
+            const idObj = await currSession.client.getNumberId(formatted);
+            chatId = idObj ? idObj._serialized : `${formatted}@c.us`;
         }
-        
-        console.log('📤 Enviando mensaje a:', chatId);
-        
-        const sentMessage = await currentSession.client.sendMessage(chatId, message);
-        
-        console.log('✓ Mensaje enviado correctamente');
-        
-        res.json({ 
-            success: true, 
-            message: 'Mensaje enviado correctamente',
-            messageId: sentMessage.id._serialized
-        });
-    } catch (error) {
-        console.error('Error al enviar mensaje:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: error.message 
-        });
-    }
+        const sent = await currSession.client.sendMessage(chatId, message);
+        res.json({ success: true, message: 'Enviado', id: sent.id._serialized });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Endpoint para enviar archivos
+// app.post('/send-media', async (req, res) => {
+//     const { sessionId, phone, file, mimetype, filename, caption } = req.body;
+//     const session = sessions.get(sessionId);
+//     if (!session || session.status !== 'ready') return res.status(400).json({ error: 'No ready' });
+
+//     try {
+//         const chatId = phone.includes('@') ? phone : `${formatNumber(phone)}@c.us`;
+//         const media = new MessageMedia(mimetype, file, filename);
+//         await session.client.sendMessage(chatId, media, { caption: caption || '' });
+//         res.json({ success: true, message: 'Archivo enviado' });
+//     } catch (e) { res.status(500).json({ error: e.message }); }
+// });
+
 app.post('/send-media', async (req, res) => {
+    const startTime = Date.now();
+    console.log('📥 [SEND-MEDIA] Recibiendo solicitud...');
+    
     const { sessionId, phone, file, mimetype, filename, caption } = req.body;
-
-    if (!sessionId || !phone || !file) {
-        return res.status(400).json({ success: false, error: 'Faltan datos' });
+    
+    // Validación de datos
+    if (!sessionId || !phone || !file || !mimetype) {
+        console.error('❌ [SEND-MEDIA] Datos incompletos:', { 
+            hasSessionId: !!sessionId, 
+            hasPhone: !!phone, 
+            hasMime: !!mimetype, 
+            hasFile: !!file 
+        });
+        return res.status(400).json({ 
+            success: false, 
+            error: 'Faltan datos requeridos',
+            message: 'Datos incompletos'
+        });
     }
-
+    
     const session = sessions.get(sessionId);
     if (!session || session.status !== 'ready') {
-        return res.status(400).json({ success: false, error: 'Sesión no lista' });
+        console.error('❌ [SEND-MEDIA] Sesión no lista:', sessionId);
+        return res.status(400).json({ 
+            success: false,
+            error: 'Sesión no lista',
+            message: 'La sesión de WhatsApp no está conectada'
+        });
     }
 
     try {
-        const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
+        const chatId = phone.includes('@') ? phone : `${formatNumber(phone)}@c.us`;
+        
+        console.log('📤 [SEND-MEDIA] Enviando archivo:', {
+            chatId,
+            mimetype,
+            filename,
+            fileSize: Math.round(file.length / 1024) + ' KB'
+        });
+        
         const media = new MessageMedia(mimetype, file, filename);
-        const sentMessage = await session.client.sendMessage(chatId, media, { caption: caption || '' });
-
+        const sentMessage = await session.client.sendMessage(chatId, media, { 
+            caption: caption || '' 
+        });
+        
+        const elapsed = Date.now() - startTime;
+        console.log(`✅ [SEND-MEDIA] Archivo enviado en ${elapsed}ms`);
+        
+        // 🔵 RESPUESTA EXITOSA
         res.json({ 
             success: true, 
-            message: 'Archivo enviado', 
-            messageId: sentMessage.id._serialized 
+            message: 'Archivo enviado',
+            messageId: sentMessage.id._serialized,
+            timestamp: Date.now()
         });
-
-    } catch (error) {
-        console.error('Error enviando archivo:', error);
-        res.status(500).json({ success: false, error: error.message });
+        
+    } catch (e) { 
+        console.error('❌ [SEND-MEDIA] Error:', e.message);
+        res.status(500).json({ 
+            success: false, 
+            error: e.message,
+            message: 'Error al enviar el archivo'
+        }); 
     }
-});
-
-// Health check
-app.get('/health', (req, res) => {
-    res.json({ 
-        success: true,
-        message: 'Servidor WhatsApp funcionando',
-        sessions: sessions.size,
-        activeSessions: Array.from(sessions.keys())
-    });
-});
-
-// Manejador de errores global
-app.use((err, req, res, next) => {
-    console.error('Error no manejado:', err);
-    res.status(500).json({ 
-        success: false,
-        error: 'Error interno del servidor' 
-    });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(` Servidor WhatsApp Web API → Puerto: ${PORT} → Listo para recibir conexiones`);
+    console.log(` Servidor WhatsApp Web API → Puerto: ${PORT}`);
 });
