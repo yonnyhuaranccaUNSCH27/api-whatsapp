@@ -317,19 +317,6 @@ app.post('/send-message', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// app.post('/send-media', async (req, res) => {
-//     const { sessionId, phone, file, mimetype, filename, caption } = req.body;
-//     const session = sessions.get(sessionId);
-//     if (!session || session.status !== 'ready') return res.status(400).json({ error: 'No ready' });
-
-//     try {
-//         const chatId = phone.includes('@') ? phone : `${formatNumber(phone)}@c.us`;
-//         const media = new MessageMedia(mimetype, file, filename);
-//         await session.client.sendMessage(chatId, media, { caption: caption || '' });
-//         res.json({ success: true, message: 'Archivo enviado' });
-//     } catch (e) { res.status(500).json({ error: e.message }); }
-// });
-
 app.post('/send-media', async (req, res) => {
     const startTime = Date.now();
     console.log(' [SEND-MEDIA] Recibiendo solicitud...');
@@ -377,7 +364,7 @@ app.post('/send-media', async (req, res) => {
         });
         
         const elapsed = Date.now() - startTime;
-        console.log(`✅ [SEND-MEDIA] Archivo enviado en ${elapsed}ms`);
+        console.log(` [SEND-MEDIA] Archivo enviado en ${elapsed}ms`);
         
         //  RESPUESTA EXITOSA
         res.json({ 
