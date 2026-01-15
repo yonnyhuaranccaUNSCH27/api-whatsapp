@@ -67,7 +67,7 @@ app.post('/session/start/:sessionId', async (req, res) => {
             authStrategy: new LocalAuth({ clientId: sessionId }),
             puppeteer: {
                 headless: true,
-                protocolTimeout: 300000, // 5 minutos
+                protocolTimeout: 300000, 
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -92,7 +92,7 @@ app.post('/session/start/:sessionId', async (req, res) => {
         sessions.set(sessionId, sessionData);
 
         client.on('qr', async (qr) => {
-            console.log('📱 QR generado para:', sessionId);
+            console.log('QR generado para:', sessionId);
             qrcodeTerminal.generate(qr, { small: true });
             try {
                 const qrImageBase64 = await QRCode.toDataURL(qr, {
@@ -105,7 +105,7 @@ app.post('/session/start/:sessionId', async (req, res) => {
         });
 
         client.on('ready', () => {
-            console.log('✓ Cliente WhatsApp listo:', sessionId);
+            console.log(' Cliente WhatsApp listo:', sessionId);
             sessionData.status = 'ready';
             sessionData.qr = null;
             sessionData.qrBase64 = null;
@@ -178,7 +178,7 @@ app.get('/chats/:sessionId', async (req, res) => {
     console.log(' Obteniendo chats para:', req.params.sessionId);
 
     try {
-        // SOLUCIÓN 1: Usar puppeeter.page directamente es más rápido
+        // Usar puppeeter.page directamente es más rápido
         const chats = await session.client.pupPage.evaluate(() => {
             const Store = window.require('WAWebCollections');
             return Store.Chat.getModelsArray()
@@ -242,7 +242,7 @@ app.get('/messages/:sessionId/:chatId', async (req, res) => {
         const formatted = await Promise.all(messages.map(async (msg) => {
             let media = null;
             
-            // SOLUCIÓN: Detectar y descargar audios correctamente
+            //  Detectar y descargar audios correctamente
             if (msg.hasMedia) {
                 try {
                     const mediaData = await msg.downloadMedia();
@@ -261,7 +261,7 @@ app.get('/messages/:sessionId/:chatId', async (req, res) => {
             return {
                 id: msg.id._serialized,
                 body: msg.body,
-                type: msg.type, // Incluye 'ptt' para audios
+                type: msg.type, 
                 timestamp: msg.timestamp,
                 from: msg.from,
                 fromMe: msg.fromMe,
@@ -332,13 +332,13 @@ app.post('/send-message', async (req, res) => {
 
 app.post('/send-media', async (req, res) => {
     const startTime = Date.now();
-    console.log('📥 [SEND-MEDIA] Recibiendo solicitud...');
+    console.log(' [SEND-MEDIA] Recibiendo solicitud...');
     
     const { sessionId, phone, file, mimetype, filename, caption } = req.body;
     
     // Validación de datos
     if (!sessionId || !phone || !file || !mimetype) {
-        console.error('❌ [SEND-MEDIA] Datos incompletos:', { 
+        console.error(' [SEND-MEDIA] Datos incompletos:', { 
             hasSessionId: !!sessionId, 
             hasPhone: !!phone, 
             hasMime: !!mimetype, 
@@ -353,7 +353,7 @@ app.post('/send-media', async (req, res) => {
     
     const session = sessions.get(sessionId);
     if (!session || session.status !== 'ready') {
-        console.error('❌ [SEND-MEDIA] Sesión no lista:', sessionId);
+        console.error(' [SEND-MEDIA] Sesión no lista:', sessionId);
         return res.status(400).json({ 
             success: false,
             error: 'Sesión no lista',
@@ -364,7 +364,7 @@ app.post('/send-media', async (req, res) => {
     try {
         const chatId = phone.includes('@') ? phone : `${formatNumber(phone)}@c.us`;
         
-        console.log('📤 [SEND-MEDIA] Enviando archivo:', {
+        console.log(' [SEND-MEDIA] Enviando archivo:', {
             chatId,
             mimetype,
             filename,
@@ -379,7 +379,7 @@ app.post('/send-media', async (req, res) => {
         const elapsed = Date.now() - startTime;
         console.log(`✅ [SEND-MEDIA] Archivo enviado en ${elapsed}ms`);
         
-        // 🔵 RESPUESTA EXITOSA
+        //  RESPUESTA EXITOSA
         res.json({ 
             success: true, 
             message: 'Archivo enviado',
@@ -388,7 +388,7 @@ app.post('/send-media', async (req, res) => {
         });
         
     } catch (e) { 
-        console.error('❌ [SEND-MEDIA] Error:', e.message);
+        console.error(' [SEND-MEDIA] Error:', e.message);
         res.status(500).json({ 
             success: false, 
             error: e.message,
