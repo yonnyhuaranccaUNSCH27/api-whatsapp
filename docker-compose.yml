@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  whatsapp-api:
+    build: .
+    container_name: whatsapp-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Esta variable es la que leerá tu server.js corregido
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+      - PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+    
+    # IMPORTANTE: Evita el error "Crash" o que se quede cargando
+    shm_size: '2gb' 
+    
+    volumes:
+      # Persistencia de sesiones (Mapea la carpeta que usa LocalAuth)
+      - ./.wwebjs_auth:/usr/src/app/.wwebjs_auth

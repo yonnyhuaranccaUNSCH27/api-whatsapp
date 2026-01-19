@@ -1,0 +1,6 @@
+node_modules
+whatsapp_auth
+.git
+.wwebjs_auth
+docker-compose.yml
+Dockerfile
