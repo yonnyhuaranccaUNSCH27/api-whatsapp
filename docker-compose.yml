@@ -8,13 +8,15 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # Esta variable es la que leerá tu server.js corregido
-      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
       - PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
     
-    # IMPORTANTE: Evita el error "Crash" o que se quede cargando
+    # Esto es vital (ya lo tenías, bien hecho)
     shm_size: '2gb' 
     
     volumes:
-      # Persistencia de sesiones (Mapea la carpeta que usa LocalAuth)
-      - ./.wwebjs_auth:/usr/src/app/.wwebjs_auth
+    
+      - whatsapp_sessions:/usr/src/app/.wwebjs_auth
+
+volumes:
+  whatsapp_sessions:

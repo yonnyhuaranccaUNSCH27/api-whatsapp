@@ -1,37 +1,44 @@
-# Usamos una imagen base de Node robusta
-FROM node:18-slim
+FROM node:18-bullseye-slim
 
-# --- 1. INSTALACIÓN DE DEPENDENCIAS DEL SISTEMA PARA CHROME ---
-# Esto es lo que necesitas para que Puppeteer funcione en Linux
-RUN apt-get update \
-    && apt-get install -y wget gnupg \
-    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf libxss1 \
-      --no-install-recommends \
+# Instalar dependencias del sistema para Puppeteer (Chrome)
+RUN apt-get update && apt-get install -y \
+    chromium \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxi6 \
+    libxtst6 \
+    libcups2 \
+    libxss1 \
+    libxrandr2 \
+    libasound2 \
+    libpangocairo-1.0-0 \
+    libatk1.0-0 \
+    libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# --- 2. CONFIGURACIÓN DEL PROYECTO ---
 WORKDIR /usr/src/app
 
-# Copiamos primero el package.json para aprovechar la caché de Docker
 COPY package*.json ./
 
-# Instalamos las dependencias de Node
-# Usamos --production para no instalar cosas de desarrollo
+# Instalamos las dependencias normales (con las versiones fijas para estabilidad)
 RUN npm install
 
-# Copiamos el resto del código (server.js, etc.)
+# ---------------------------------------------------------------------
+# EL TRUCO MAESTRO:
+# Forzamos la instalación de la ÚLTIMA versión de wwebjs
+# justo antes de copiar el código. Esto asegura que la imagen
+# siempre tenga lo más nuevo al construirse.
+# ---------------------------------------------------------------------
+RUN npm install whatsapp-web.js@latest
+
 COPY . .
 
-# --- 3. VARIABLES DE ENTORNO ---
-# Le decimos a Puppeteer que NO descargue Chrome otra vez (usaremos el instalado arriba)
+# Variables de entorno para que use el Chromium instalado
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Puerto
-EXPOSE 3000
-
-# Comando de inicio
-CMD [ "node", "src/server.js" ]
+CMD ["node", "src/server.js"]

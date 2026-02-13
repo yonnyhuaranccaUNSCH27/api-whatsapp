@@ -148,23 +148,25 @@ app.post('/session/start/:sessionId', async (req, res) => {
 
     try {
         const client = new Client({
-            authStrategy: new LocalAuth({ clientId: sessionId }),
-            puppeteer: {
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
-                headless: true,
-                args: [
-                    '--no-sandbox', 
-                    '--disable-setuid-sandbox', 
-                    '--disable-dev-shm-usage', 
-                    '--disable-accelerated-2d-canvas', 
-                    '--no-first-run', 
-                    '--no-zygote', 
-                    '--disable-gpu',
-                    '--disable-extensions' // Agregado para reducir carga
-                ],
-                timeout: 120000 
-            }
-        });
+    authStrategy: new LocalAuth({
+        clientId: sessionId,
+        dataPath: '/usr/src/app/.wwebjs_auth' // Aseguramos la ruta del volumen
+    }),
+    puppeteer: {
+        // Usamos la variable de entorno o undefined si es local
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        headless: true, // En Docker SIEMPRE debe ser true
+        args: [
+            '--no-sandbox', // CRÍTICO para Docker
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage', // Evita errores de memoria compartida
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu'
+        ]
+    }
+});
 
         const sessionData = {
             client: client,
@@ -238,11 +240,19 @@ app.post('/session/start/:sessionId', async (req, res) => {
                     console.error('Error al destruir cliente:', e.message);
                 }
 
-                // 3. IMPORTANTE: NO hacemos sessions.delete(sessionId) aquí.
-                // Dejamos el objeto sesión "vivo" pero en estado 'logged_out'.
-                // Así, cuando des clic en "Reconectar", el endpoint /session/start 
-                // detectará que existe pero no sirve, y creará una nueva limpia.
             }
+        });
+
+        client.on('change_state', state => {
+            console.log(' CAMBIO DE ESTADO DE CONEXIÓN:', state);
+            // Si el estado es 'CONFLICT' o 'UNPAIRED', podría significar que
+            // abrieron WhatsApp Web en otro lado o se cerró la sesión.
+        });
+
+        client.on('change_battery', (batteryInfo) => {
+            const { battery, plugging } = batteryInfo;
+            // Esto es útil para saber si el celular "servidor" se va a apagar
+            console.log(` Batería del celular: ${battery}% - ¿Cargando?: ${plugging}`);
         });
 
         client.initialize().catch(err => {
