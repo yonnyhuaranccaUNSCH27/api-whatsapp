@@ -37,19 +37,12 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Middleware de seguridad simple
 app.use((req, res, next) => {
-    // Puedes enviar esto en los Headers como 'x-api-key'
     const apiKey = req.headers['x-api-key'];
     const mySecretKey = 'tu_contraseña_secreta_aqui'; // Cámbiame
 
-    // Permitir acceso sin clave solo para ver el QR o login (opcional)
-    // O proteger TODO:
     if (apiKey && apiKey === mySecretKey) {
         next();
     } else {
-        // Si estás probando en local y te da pereza poner headers, 
-        // puedes comentar este bloque temporalmente.
-        // res.status(403).json({ error: 'Acceso denegado: API Key incorrecta' });
-        
         // POR AHORA (Modo desarrollo): Dejar pasar
         next(); 
     }
@@ -58,8 +51,6 @@ app.use((req, res, next) => {
 const sessions = new Map();
 
 console.log(` Iniciando Servidor WhatsApp Web API`);
-
-
 
 const deleteSessionFolder = async (pathStr) => {
     if (!fs.existsSync(pathStr)) return true; // Si no existe, todo bien
@@ -72,20 +63,18 @@ const deleteSessionFolder = async (pathStr) => {
     } catch (error) {
         // 2. Si falla por bloqueo (EBUSY), esperamos un poco
         if (error.code === 'EBUSY' || error.code === 'EPERM') {
-            console.log(`⚠️ Archivo bloqueado, intentando mover carpeta...`);
+            console.log(` Archivo bloqueado, intentando mover carpeta...`);
             await new Promise(resolve => setTimeout(resolve, 1000));
             
             try {
-                // 3. ESTRATEGIA RENOMBRADO (El truco mágico)
-                // Si no podemos borrarla, le cambiamos el nombre para que no estorbe
+                // 3. ESTRATEGIA RENOMBRADO
                 const trashPath = `${pathStr}-trash-${Date.now()}`;
                 fs.renameSync(pathStr, trashPath);
                 console.log(` Carpeta movida a la papelera temporal: ${trashPath}`);
                 
-                // Intentamos borrar la basura asíncronamente (sin esperar) para no frenar el login
                 fs.rm(trashPath, { recursive: true, force: true }, () => {}); 
                 
-                return true; // Para el sistema, la ruta original ya está libre
+                return true; 
             } catch (renameError) {
                 console.error(` No se pudo ni borrar ni mover: ${renameError.message}`);
                 return false;
@@ -118,59 +107,74 @@ app.post('/session/start/:sessionId', async (req, res) => {
     const sessionId = req.params.sessionId;
     console.log('🔹 Iniciando solicitud de sesión para:', sessionId);
     
-    const authPath = path.join(__dirname, '.wwebjs_auth', `session-${sessionId}`);
-    
-    // 1. Limpieza de memoria si existe una sesión previa colgada
+    // --- 1. PREVENCIÓN DE PETICIONES MÚLTIPLES ---
     if (sessions.has(sessionId)) {
         const session = sessions.get(sessionId);
+        
+        // Si ya está en proceso de abrirse, bloqueamos la petición extra
+        if (session.status === 'initializing') {
+            console.log(' Inicialización en curso, ignorando petición duplicada.');
+            return res.status(429).json({ success: false, message: 'Inicializando, por favor espere...', status: 'initializing' });
+        }
+        
         // Si ya está lista, devolvemos éxito
         if (session.status === 'ready') {
             return res.json({ success: true, message: 'Sesión activa', status: session.status, info: session.info });
         }
-        // Si está en cualquier otro estado, la destruimos para reiniciar
-        try { await session.client.destroy(); } catch(e){}
+        
+        // Si está en cualquier otro estado, la destruimos para reiniciar de forma segura
+        try { 
+            console.log('🧹 Destruyendo instancia de navegador anterior...');
+            await session.client.destroy(); 
+            // IMPORTANTE: Esperar 2 segundos para que Docker/SO libere el archivo lock del Chromium
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        } catch(e) {
+            console.error(' Error leve al destruir (ignorable):', e.message);
+        }
         sessions.delete(sessionId);
     }
 
-    // 2. Limpieza de disco (Usa la nueva función deleteSessionFolder)
+    const authPath = path.join(__dirname, '.wwebjs_auth', `session-${sessionId}`);
+    
+    // 2. Limpieza de disco
     if (fs.existsSync(authPath)) {
         console.log(` Preparando directorio para nueva sesión: ${sessionId}`);
         const deleted = await deleteSessionFolder(authPath);
         
         if (!deleted) {
-            // Si incluso el renombrado falló, ahí si damos error
             return res.status(500).json({ 
                 success: false, 
-                message: 'Windows ha bloqueado los archivos. Por favor espera 10 segundos e intenta de nuevo.' 
+                message: 'Los archivos están bloqueados. Por favor espera 10 segundos e intenta de nuevo.' 
             });
         }
+        await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
     try {
         const client = new Client({
-    authStrategy: new LocalAuth({
-        clientId: sessionId,
-        dataPath: '/usr/src/app/.wwebjs_auth' // Aseguramos la ruta del volumen
-    }),
-    puppeteer: {
-        // Usamos la variable de entorno o undefined si es local
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        headless: true, // En Docker SIEMPRE debe ser true
-        args: [
-            '--no-sandbox', // CRÍTICO para Docker
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage', // Evita errores de memoria compartida
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu'
-        ]
-    }
-});
+            authStrategy: new LocalAuth({
+                clientId: sessionId,
+                dataPath: '/usr/src/app/.wwebjs_auth' 
+            }),
+            puppeteer: {
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+                headless: true, 
+                args: [
+                    '--no-sandbox', 
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage', 
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu',
+                    '--single-process' 
+                ]
+            }
+        });
 
         const sessionData = {
             client: client,
-            status: 'initializing',
+            status: 'initializing', 
             qr: null,
             qrBase64: null,
             info: null
@@ -204,35 +208,24 @@ app.post('/session/start/:sessionId', async (req, res) => {
         client.on('auth_failure', async (msg) => {
             console.error(' Fallo de autenticación:', sessionId);
             sessionData.status = 'auth_failure';
-            // IMPORTANTE: Si falla la autenticación, limpiamos todo inmediatamente
             try { await client.destroy(); } catch (e) {}
             sessions.delete(sessionId);
-            // Intentamos borrar la carpeta corrupta en segundo plano
             deleteSessionFolder(path.join(__dirname, '.wwebjs_auth', `session-${sessionId}`));
         });
 
         client.on('disconnected', async (reason) => {
             console.log('Cliente desconectado:', reason);
             
-            // Actualizamos el estado en memoria
             if (sessions.has(sessionId)) {
                 const session = sessions.get(sessionId);
-                session.status = 'disconnected';
+                session.status = reason === 'LOGOUT' ? 'logged_out' : 'disconnected';
                 session.qr = null;
                 session.qrBase64 = null;
-                session.info = null; // Limpiamos info del usuario
+                session.info = null; 
             }
 
             if (reason === 'LOGOUT') {
-                console.log(' LOGOUT detectado desde el celular');
-                
-                // 1. Marcamos el estado como 'logged_out'
-                if (sessions.has(sessionId)) {
-                    sessions.get(sessionId).status = 'logged_out';
-                    sessions.get(sessionId).disconnectedReason = 'LOGOUT';
-                }
-
-                // 2. Destruimos el cliente de Puppeteer para liberar RAM y archivos
+                console.log('LOGOUT detectado desde el celular');
                 try { 
                     await client.destroy(); 
                     console.log(' Cliente destruido correctamente tras logout');
@@ -240,24 +233,20 @@ app.post('/session/start/:sessionId', async (req, res) => {
                     console.error('Error al destruir cliente:', e.message);
                 }
 
+                // NUEVO: Nos aseguramos de borrar la carpeta aquí mismo
+                console.log(' Esperando liberación de archivos para limpiar carpeta...');
+                await new Promise(resolve => setTimeout(resolve, 3000)); // Esperamos a que Puppeteer suelte todo
+                await deleteSessionFolder(authPath);
+                console.log('✨ Carpeta de sesión eliminada por completo tras logout.');
             }
         });
 
-        client.on('change_state', state => {
-            console.log(' CAMBIO DE ESTADO DE CONEXIÓN:', state);
-            // Si el estado es 'CONFLICT' o 'UNPAIRED', podría significar que
-            // abrieron WhatsApp Web en otro lado o se cerró la sesión.
-        });
-
-        client.on('change_battery', (batteryInfo) => {
-            const { battery, plugging } = batteryInfo;
-            // Esto es útil para saber si el celular "servidor" se va a apagar
-            console.log(` Batería del celular: ${battery}% - ¿Cargando?: ${plugging}`);
-        });
-
-        client.initialize().catch(err => {
-            console.error('Error en initialize:', err);
+        // NUEVO: Manejo reforzado si falla al inicializar
+        client.initialize().catch(async err => {
+            console.error(' Error fatal en initialize:', err);
+            try { await client.destroy(); } catch(e) {} // Forzamos el cierre si se quedó colgado
             sessions.delete(sessionId);
+            await deleteSessionFolder(authPath); // Limpiamos rastros
         });
 
         res.json({ success: true, message: 'Iniciando...', sessionId, status: 'initializing' });
@@ -268,12 +257,10 @@ app.post('/session/start/:sessionId', async (req, res) => {
     }
 });
 
-// --- HEALTH CHECK: Verificar si la sesión está realmente activa ---
 app.get('/session/health/:sessionId', async (req, res) => {
     const sessionId = req.params.sessionId;
     const session = sessions.get(sessionId);
     
-    // Si no existe en memoria (nunca se inició)
     if (!session) {
         return res.status(404).json({ 
             healthy: false, 
@@ -283,18 +270,16 @@ app.get('/session/health/:sessionId', async (req, res) => {
         });
     }
     
-    // CASO CRÍTICO: Si fue cerrado desde el celular
     if (session.status === 'logged_out') {
         return res.json({
             healthy: false,
-            status: 'logged_out', // El frontend debe detectar esto
+            status: 'logged_out', 
             message: 'Sesión cerrada desde el dispositivo',
-            needsReconnect: true, // Esto activa tu botón de reconectar correctamente
-            qr: null // Aseguramos que no muestre QR viejo
+            needsReconnect: true, 
+            qr: null 
         });
     }
     
-    // Verificar si está desvinculado
     if (session.status === 'unpaired') {
         return res.json({
             healthy: false,
@@ -304,7 +289,6 @@ app.get('/session/health/:sessionId', async (req, res) => {
         });
     }
     
-    // Verificar estado general
     if (session.status !== 'ready') {
         return res.json({
             healthy: false,
@@ -314,7 +298,6 @@ app.get('/session/health/:sessionId', async (req, res) => {
         });
     }
     
-    // Verificar que el cliente realmente funcione
     try {
         const state = await session.client.getState();
         
@@ -365,7 +348,6 @@ app.post('/session/close/:sessionId', async (req, res) => {
     const sessionId = req.params.sessionId;
     const session = sessions.get(sessionId);
     
-    // Eliminamos la referencia en memoria primero
     sessions.delete(sessionId);
     
     const authPath = path.join(__dirname, '.wwebjs_auth', `session-${sessionId}`);
@@ -373,18 +355,15 @@ app.post('/session/close/:sessionId', async (req, res) => {
     if (session && session.client) {
         try {
             console.log(` Cerrando navegador para ${sessionId}...`);
-            // IMPORTANTE: NO usamos logout(), solo destroy() para evitar EBUSY
             await session.client.destroy(); 
         } catch (e) { 
             console.error('Error no crítico al destruir cliente:', e.message); 
         }
         
-        // Esperamos 3 segundos para que Windows libere el archivo lock
         console.log(' Esperando a que Windows libere archivos...');
         await new Promise(resolve => setTimeout(resolve, 3000));
     }
     
-    // Ahora sí borramos la carpeta de forma segura
     await deleteSessionFolder(authPath);
     
     res.json({ success: true, message: 'Sesión cerrada y limpiada' });
@@ -401,24 +380,21 @@ app.get('/chats/:sessionId', async (req, res) => {
     console.log(' Obteniendo chats para:', req.params.sessionId);
 
     try {
-        // Inyección directa en navegador
         const chats = await session.client.pupPage.evaluate(() => {
             const Store = window.require('WAWebCollections');
             return Store.Chat.getModelsArray()
-                .slice(0, 20) // Límite de 20 chats para velocidad
+                .slice(0, 20) 
                 .map(chat => ({
                     id: chat.id._serialized,
                     name: chat.formattedTitle || chat.name,
                     isGroup: chat.isGroup,
                     unreadCount: chat.unreadCount,
                     timestamp: chat.t,
-                    //lastMessage: chat.lastReceivedKey ? chat.msgs.get(chat.lastReceivedKey)?.body : null
                     lastMessage: (chat.lastReceivedKey && chat.msgs && chat.msgs.get) 
                     ? chat.msgs.get(chat.lastReceivedKey)?.body : null
                 }));
         });
 
-        // Obtener fotos en paralelo
         const chatsWithPics = await Promise.all(
             chats.map(async (chat) => {
                 let profilePic = null;
@@ -442,8 +418,7 @@ app.get('/chats/:sessionId', async (req, res) => {
     }
 });
 
-
-// --- OBTENER MENSAJES 
+// --- OBTENER MENSAJES ---
 app.get('/messages/:sessionId/:chatId', async (req, res) => {
     const { sessionId, chatId } = req.params;
     const limit = parseInt(req.query.limit) || 50; 
@@ -457,18 +432,13 @@ app.get('/messages/:sessionId/:chatId', async (req, res) => {
         const finalId = chatId.includes('@') ? chatId : `${formatNumber(chatId)}@c.us`;
         const chat = await session.client.getChatById(finalId);
         
-        // Obtenemos mensajes
         const messages = await chat.fetchMessages({ limit: limit });
         
-        // Procesamos los mensajes en paralelo pero con protección
         const formatted = await Promise.all(messages.map(async (msg) => {
             let media = null;
             
-            // INTENTO DE DESCARGA DE MEDIA SEGURO
-            // Solo descargamos si es audio o imagen, y ponemos un try/catch estricto
             if (msg.hasMedia) {
                 try {
-                    // Timeout de 2 segundos para descargar media. Si tarda más, se ignora.
                     const downloadPromise = msg.downloadMedia();
                     const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000));
                     
@@ -482,7 +452,6 @@ app.get('/messages/:sessionId/:chatId', async (req, res) => {
                         };
                     }
                 } catch (e) { 
-                    // Si falla la descarga, simplemente enviamos el mensaje sin media (para no romper el chat)
                     console.error(` Error descarga media msg ${msg.id._serialized}: ${e.message}`);
                     media = null; 
                 }
@@ -496,7 +465,7 @@ app.get('/messages/:sessionId/:chatId', async (req, res) => {
                 from: msg.from,
                 fromMe: msg.fromMe,
                 hasMedia: msg.hasMedia,
-                media: media, // Puede ser null si falló la descarga
+                media: media, 
                 ack: msg.ack,
                 isVoice: msg.type === 'ptt' || msg.type === 'audio'
             };
@@ -506,7 +475,6 @@ app.get('/messages/:sessionId/:chatId', async (req, res) => {
 
     } catch (e) { 
         console.error('Error FATAL en mensajes:', e);
-        // Devolvemos array vacío en vez de error 500 para que el chat al menos abra
         res.json({ success: false, messages: [], error: e.message }); 
     }
 });
