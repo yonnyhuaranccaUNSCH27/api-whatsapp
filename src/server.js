@@ -31,26 +31,28 @@ app.use(cors({
   credentials: true
 }));
 
-// Aumentar límite para envío de archivos grandes
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Middleware de seguridad simple
+
 app.use((req, res, next) => {
     const apiKey = req.headers['x-api-key'];
-    const mySecretKey = 'tu_contraseña_secreta_aqui'; // Cámbiame
+    const mySecretKey = 'tu_contraseña_secreta_aqui'; 
 
     if (apiKey && apiKey === mySecretKey) {
         next();
     } else {
-        // POR AHORA (Modo desarrollo): Dejar pasar
+        
         next(); 
     }
 });
 
 const sessions = new Map();
 
+const AUTH_BASE_PATH = path.resolve(__dirname, '..', '.wwebjs_auth');
+
 console.log(` Iniciando Servidor WhatsApp Web API`);
+console.log(` Ruta auth: ${AUTH_BASE_PATH}`);
 
 const deleteSessionFolder = async (pathStr) => {
     if (!fs.existsSync(pathStr)) return true; // Si no existe, todo bien
@@ -58,7 +60,7 @@ const deleteSessionFolder = async (pathStr) => {
     // 1. Intentamos borrar normal
     try {
         fs.rmSync(pathStr, { recursive: true, force: true });
-        console.log(`🗑️ Carpeta eliminada: ${pathStr}`);
+        console.log(` Carpeta eliminada: ${pathStr}`);
         return true;
     } catch (error) {
         // 2. Si falla por bloqueo (EBUSY), esperamos un poco
@@ -134,11 +136,11 @@ app.post('/session/start/:sessionId', async (req, res) => {
         sessions.delete(sessionId);
     }
 
-    const authPath = path.join(__dirname, '.wwebjs_auth', `session-${sessionId}`);
+    const authPath = path.join(AUTH_BASE_PATH, `session-${sessionId}`);
     
     // 2. Limpieza de disco
     if (fs.existsSync(authPath)) {
-        console.log(` Preparando directorio para nueva sesión: ${sessionId}`);
+        console.log(` Preparando directorio para nueva sesión en: ${authPath}`);
         const deleted = await deleteSessionFolder(authPath);
         
         if (!deleted) {
@@ -154,7 +156,7 @@ app.post('/session/start/:sessionId', async (req, res) => {
         const client = new Client({
             authStrategy: new LocalAuth({
                 clientId: sessionId,
-                dataPath: '/usr/src/app/.wwebjs_auth' 
+                dataPath: AUTH_BASE_PATH 
             }),
             puppeteer: {
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
@@ -172,7 +174,9 @@ app.post('/session/start/:sessionId', async (req, res) => {
             }
         });
 
+        const gen = Date.now();
         const sessionData = {
+            gen: gen,
             client: client,
             status: 'initializing', 
             qr: null,
@@ -184,44 +188,55 @@ app.post('/session/start/:sessionId', async (req, res) => {
 
         client.on('qr', async (qr) => {
             console.log(' QR nuevo generado para:', sessionId);
+            const current = sessions.get(sessionId);
+            if (!current || current.gen !== gen) return;
             try {
                 const qrImageBase64 = await QRCode.toDataURL(qr, { errorCorrectionLevel: 'H', type: 'image/png', width: 400, margin: 1 });
-                sessionData.qr = qr;
-                sessionData.qrBase64 = qrImageBase64.replace(/^data:image\/png;base64,/, '');
-                sessionData.status = 'qr_generated';
+                current.qr = qr;
+                current.qrBase64 = qrImageBase64.replace(/^data:image\/png;base64,/, '');
+                current.status = 'qr_generated';
             } catch (err) { console.error('Error generando QR imagen:', err); }
         });
 
         client.on('ready', () => {
             console.log(' Cliente WhatsApp listo:', sessionId);
-            sessionData.status = 'ready';
-            sessionData.qr = null;
-            sessionData.qrBase64 = null;
-            sessionData.info = { wid: client.info.wid._serialized, pushname: client.info.pushname };
+            const current = sessions.get(sessionId);
+            if (!current || current.gen !== gen) return;
+            current.status = 'ready';
+            current.qr = null;
+            current.qrBase64 = null;
+            current.info = { wid: client.info.wid._serialized, pushname: client.info.pushname };
         });
 
         client.on('authenticated', () => {
             console.log(' Autenticado:', sessionId);
-            sessionData.status = 'authenticated';
+            const current = sessions.get(sessionId);
+            if (!current || current.gen !== gen) return;
+            current.status = 'authenticated';
         });
 
         client.on('auth_failure', async (msg) => {
             console.error(' Fallo de autenticación:', sessionId);
-            sessionData.status = 'auth_failure';
+            const current = sessions.get(sessionId);
+            if (current && current.gen === gen) {
+                current.status = 'auth_failure';
+            }
             try { await client.destroy(); } catch (e) {}
-            sessions.delete(sessionId);
-            deleteSessionFolder(path.join(__dirname, '.wwebjs_auth', `session-${sessionId}`));
+            if (current && current.gen === gen) {
+                sessions.delete(sessionId);
+            }
+            deleteSessionFolder(path.join(AUTH_BASE_PATH, `session-${sessionId}`));
         });
 
         client.on('disconnected', async (reason) => {
             console.log('Cliente desconectado:', reason);
             
-            if (sessions.has(sessionId)) {
-                const session = sessions.get(sessionId);
-                session.status = reason === 'LOGOUT' ? 'logged_out' : 'disconnected';
-                session.qr = null;
-                session.qrBase64 = null;
-                session.info = null; 
+            const current = sessions.get(sessionId);
+            if (current && current.gen === gen) {
+                current.status = reason === 'LOGOUT' ? 'logged_out' : 'disconnected';
+                current.qr = null;
+                current.qrBase64 = null;
+                current.info = null; 
             }
 
             if (reason === 'LOGOUT') {
@@ -233,20 +248,25 @@ app.post('/session/start/:sessionId', async (req, res) => {
                     console.error('Error al destruir cliente:', e.message);
                 }
 
-                // NUEVO: Nos aseguramos de borrar la carpeta aquí mismo
                 console.log(' Esperando liberación de archivos para limpiar carpeta...');
-                await new Promise(resolve => setTimeout(resolve, 3000)); // Esperamos a que Puppeteer suelte todo
+                await new Promise(resolve => setTimeout(resolve, 3000));
                 await deleteSessionFolder(authPath);
                 console.log('✨ Carpeta de sesión eliminada por completo tras logout.');
+                
+                if (current && current.gen === gen) {
+                    sessions.delete(sessionId);
+                }
             }
         });
 
-        // NUEVO: Manejo reforzado si falla al inicializar
         client.initialize().catch(async err => {
             console.error(' Error fatal en initialize:', err);
-            try { await client.destroy(); } catch(e) {} // Forzamos el cierre si se quedó colgado
-            sessions.delete(sessionId);
-            await deleteSessionFolder(authPath); // Limpiamos rastros
+            try { await client.destroy(); } catch(e) {}
+            const current = sessions.get(sessionId);
+            if (current && current.gen === gen) {
+                sessions.delete(sessionId);
+            }
+            await deleteSessionFolder(authPath);
         });
 
         res.json({ success: true, message: 'Iniciando...', sessionId, status: 'initializing' });
@@ -350,7 +370,7 @@ app.post('/session/close/:sessionId', async (req, res) => {
     
     sessions.delete(sessionId);
     
-    const authPath = path.join(__dirname, '.wwebjs_auth', `session-${sessionId}`);
+    const authPath = path.join(AUTH_BASE_PATH, `session-${sessionId}`);
 
     if (session && session.client) {
         try {
@@ -364,7 +384,13 @@ app.post('/session/close/:sessionId', async (req, res) => {
         await new Promise(resolve => setTimeout(resolve, 3000));
     }
     
-    await deleteSessionFolder(authPath);
+    // Reintentar borrar carpeta hasta 3 veces
+    for (let i = 0; i < 3; i++) {
+        const deleted = await deleteSessionFolder(authPath);
+        if (deleted) break;
+        console.log(` Intento ${i + 1} falló al borrar carpeta, reintentando en 2s...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+    }
     
     res.json({ success: true, message: 'Sesión cerrada y limpiada' });
 });
