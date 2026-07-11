@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /usr/src/app/build
+WORKDIR /usr/src/app
 
 COPY package*.json ./
 RUN npm install
@@ -31,4 +31,4 @@ COPY . .
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-CMD ["node", "src/server.js"]
+ENTRYPOINT ["node", "build/src/server.js"]
