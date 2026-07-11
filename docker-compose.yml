@@ -10,14 +10,12 @@ services:
     environment:
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
       - PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-    
-    # Esto es vital (ya lo tenías, bien hecho)
-    shm_size: '2gb' 
-    
+    command: ["node", "src/server.js"]
+    shm_size: '2gb'
     volumes:
       - whatsapp_sessions:/usr/src/app/.wwebjs_auth
     networks:
-      - marketplaceapi-net 
+      - marketplaceapi-net
 volumes:
   whatsapp_sessions:
 

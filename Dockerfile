@@ -20,24 +20,14 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /usr/src/app
+WORKDIR /usr/src/app/build
 
 COPY package*.json ./
-
-# Instalamos las dependencias normales (con las versiones fijas para estabilidad)
 RUN npm install
-
-# ---------------------------------------------------------------------
-# EL TRUCO MAESTRO:
-# Forzamos la instalación de la ÚLTIMA versión de wwebjs
-# justo antes de copiar el código. Esto asegura que la imagen
-# siempre tenga lo más nuevo al construirse.
-# ---------------------------------------------------------------------
 RUN npm install whatsapp-web.js@latest
 
 COPY . .
 
-# Variables de entorno para que use el Chromium instalado
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
