@@ -2,9 +2,9 @@
   "name": "whatsapp-service",
   "version": "1.0.0",
   "description": "Servicio de WhatsApp Web API",
-  "main": "server.js",
+  "main": "src/server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node src/server.js",
     "dev": "nodemon server.js"
   },
   "keywords": [],
