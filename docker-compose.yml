@@ -5,13 +5,8 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
-    environment:
-      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-      - PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-    command: ["node", "build/src/server.js"]
-    shm_size: '2gb'
     volumes:
-      - whatsapp_sessions:/usr/src/app/.wwebjs_auth
+      - whatsapp_sessions:/usr/src/app/baileys_auth
     networks:
       - marketplaceapi-net
 volumes:
@@ -19,4 +14,4 @@ volumes:
 
 networks:
   marketplaceapi-net:
-    external: true 
+    external: true
