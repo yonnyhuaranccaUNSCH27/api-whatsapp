@@ -332,59 +332,6 @@ const resolveNamesViaUSync = async (sock, store) => {
     }
 };
 
-// const resolveNamesViaUSync = async (sock, store) => {
-//     // Recolectar accountLids de chats por teléfono que aún no tienen nombre resuelto
-//     const targets = [];
-//     for (const [jid, chat] of store.chats) {
-//         if (!jid.endsWith('@s.whatsapp.net')) continue;
-//         if (chat.name || chat.notify) continue;
-//         if (!chat.accountLid) continue;
-//         const lidContact = store.contacts.get(chat.accountLid);
-//         if (lidContact?.name || lidContact?.notify) continue;
-//         targets.push({ jid, accountLid: chat.accountLid });
-//     }
-
-//     if (targets.length === 0) {
-//         console.log('[NAMES] Nada que resolver vía USync');
-//         return;
-//     }
-//     console.log(`[NAMES] ${targets.length} chats sin nombre, consultando USync...`);
-
-//     try {
-//         const { USyncQuery, USyncUser } = require('@whiskeysockets/baileys');
-//         const BATCH_SIZE = 5;
-//         let resolved = 0;
-
-//         for (let i = 0; i < targets.length; i += BATCH_SIZE) {
-//             const batch = targets.slice(i, i + BATCH_SIZE);
-//             try {
-//                 const query = new USyncQuery().withContactProtocol();
-//                 for (const t of batch) {
-//                     query.withUser(new USyncUser().withId(t.jid));
-//                 }
-//                 const result = await sock.executeUSyncQuery(query);
-//                 if (result?.list) {
-//                     for (const item of result.list) {
-//                         const name = item.contact?.name || item.contact?.notify;
-//                         if (item.id && name) {
-//                             const existing = store.contacts.get(item.id) || { id: item.id };
-//                             existing.name = name;
-//                             store.contacts.set(item.id, existing);
-//                             resolved++;
-//                         }
-//                     }
-//                 }
-//             } catch (e) {
-//                 console.error(`[NAMES] USync batch error (offset ${i}):`, e.message);
-//             }
-//             await new Promise(r => setTimeout(r, 1000));
-//         }
-//         console.log(`[NAMES] Resueltos ${resolved}/${targets.length} nombres`);
-//     } catch (e) {
-//         console.error('[NAMES] Error general:', e.message);
-//     }
-// };
-
 const extractLidsFromGroups = async (sock, store) => {
     try {
         const groups = await sock.groupFetchAllParticipating();
@@ -419,7 +366,7 @@ const getChatsFromStore = (session) => {
         const isLid = jid.endsWith('@lid');
         if (!isIndividual && !isGroup && !isLid) continue;
 
-        // 👇 NUEVO: excluir chats archivados (igual que WhatsApp Web los oculta de la lista principal)
+      
         if (chat.archived === true) continue;
 
         const messages = store.messages.get(jid) || [];
@@ -427,8 +374,6 @@ const getChatsFromStore = (session) => {
         if (!hasReal && !isGroup) continue;
         if (!hasReal && messages.length === 0 && !chat.conversationTimestamp) continue;
 
-        // 👇 FILTRO: solo chats donde TÚ escribiste al menos un mensaje
-        // (ahora aplica también a grupos, según lo que necesitas)
         const hasSentByMe = messages.some(m => m.key?.fromMe && hasRealContent(m));
         if (!hasSentByMe) continue;
 
@@ -544,7 +489,7 @@ const bindStoreEvents = (sock, store, sessionPath, sessionId) => {
     if (!chatMsgs.find(m => m.key.id === msg.key.id)) {
         chatMsgs.push(msg);
         if (chatMsgs.length > MAX_MSGS_PER_CHAT) {
-            // 👇 ORDENAR por timestamp real antes de recortar, para conservar los más recientes
+           
             const sorted = [...chatMsgs].sort(
                 (a, b) => normalizeTimestamp(a.messageTimestamp) - normalizeTimestamp(b.messageTimestamp)
             );
