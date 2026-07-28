@@ -1,7 +1,7 @@
 {
   "name": "whatsapp-service",
-  "version": "2.0.0",
-  "description": "Servicio de WhatsApp Web API (Baileys)",
+  "version": "4.0.0",
+  "description": "Servicio de WhatsApp Web API (Baileys + whatsapp-web.js contacts)",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -14,6 +14,7 @@
     "@whiskeysockets/baileys": "^6.7.16",
     "@hapi/boom": "^10.0.1",
     "pino": "^9.6.0",
+    "whatsapp-web.js": "^1.34.7",
     "express": "^4.21.0",
     "cors": "^2.8.5",
     "qrcode": "^1.5.4"

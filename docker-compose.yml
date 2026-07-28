@@ -6,11 +6,18 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - whatsapp_sessions:/usr/src/app/baileys_auth
+      - whatsapp_baileys:/usr/src/app/baileys_auth
+      - whatsapp_wwebjs:/usr/src/app/wwebjs_auth
+      - whatsapp_contacts:/usr/src/app/contacts_cache
+    environment:
+      - PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
     networks:
       - marketplaceapi-net
 volumes:
-  whatsapp_sessions:
+  whatsapp_baileys:
+  whatsapp_wwebjs:
+  whatsapp_contacts:
 
 networks:
   marketplaceapi-net:

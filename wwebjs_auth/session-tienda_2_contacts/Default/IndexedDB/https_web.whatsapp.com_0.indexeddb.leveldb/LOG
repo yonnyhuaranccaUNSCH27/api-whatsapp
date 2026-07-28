@@ -1,0 +1,57 @@
+2026/07/27-18:17:12.708 9b50 Creating DB D:\Node.js\whatsapp-service\wwebjs_auth\session-tienda_2_contacts\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb since it was missing.
+2026/07/27-18:17:12.715 9b50 Reusing MANIFEST D:\Node.js\whatsapp-service\wwebjs_auth\session-tienda_2_contacts\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/07/27-18:17:12.715 9b50 Recovering log #66
+2026/07/27-18:17:12.717 9b50 Reusing old log D:\Node.js\whatsapp-service\wwebjs_auth\session-tienda_2_contacts\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000066.log 
+2026/07/27-18:17:12.717 9b50 Delete type=2 #65
+2026/07/27-18:17:12.717 9b50 Delete type=2 #68
+2026/07/27-18:17:42.490 8ddc Level-0 table #68: started
+2026/07/27-18:17:42.524 8ddc Level-0 table #68: 1052667 bytes OK
+2026/07/27-18:17:42.527 8ddc Delete type=0 #66
+2026/07/27-18:17:44.065 8ddc Level-0 table #70: started
+2026/07/27-18:17:44.094 8ddc Level-0 table #70: 1055710 bytes OK
+2026/07/27-18:17:44.096 8ddc Delete type=0 #67
+2026/07/27-18:17:44.110 9c80 Compacting 1@1 + 1@2 files
+2026/07/27-18:17:44.188 9c80 Generated table #71@1: 25599 keys, 1068810 bytes
+2026/07/27-18:17:44.188 9c80 Compacted 1@1 + 1@2 files => 1068810 bytes
+2026/07/27-18:17:44.190 9c80 compacted to: files[ 0 0 1 0 0 0 0 ]
+2026/07/27-18:17:47.436 8ddc Level-0 table #73: started
+2026/07/27-18:17:47.507 8ddc Level-0 table #73: 1120267 bytes OK
+2026/07/27-18:17:47.526 8ddc Delete type=2 #68
+2026/07/27-18:17:47.526 8ddc Delete type=0 #69
+2026/07/27-18:17:47.526 8ddc Delete type=2 #70
+2026/07/27-18:17:47.530 8ddc Compacting 1@1 + 1@2 files
+2026/07/27-18:17:47.711 8ddc Generated table #74@1: 44969 keys, 1851266 bytes
+2026/07/27-18:17:47.711 8ddc Compacted 1@1 + 1@2 files => 1851266 bytes
+2026/07/27-18:17:47.757 8ddc compacted to: files[ 0 0 1 0 0 0 0 ]
+2026/07/27-18:17:48.249 8ddc Level-0 table #76: started
+2026/07/27-18:17:49.759 8ddc Level-0 table #76: 1334715 bytes OK
+2026/07/27-18:17:49.799 8ddc Delete type=2 #71
+2026/07/27-18:17:49.799 8ddc Delete type=0 #72
+2026/07/27-18:17:49.800 8ddc Delete type=2 #73
+2026/07/27-18:17:49.803 8ddc Compacting 1@1 + 1@2 files
+2026/07/27-18:17:50.007 8ddc Generated table #77@1: 36038 keys, 2205892 bytes
+2026/07/27-18:17:50.092 8ddc Generated table #78@1: 8700 keys, 612059 bytes
+2026/07/27-18:17:50.092 8ddc Compacted 1@1 + 1@2 files => 2817951 bytes
+2026/07/27-18:17:50.111 8ddc compacted to: files[ 0 0 2 0 0 0 0 ]
+2026/07/27-18:17:51.334 8ddc Level-0 table #80: started
+2026/07/27-18:17:51.382 8ddc Level-0 table #80: 1090999 bytes OK
+2026/07/27-18:17:51.397 8ddc Delete type=2 #74
+2026/07/27-18:17:51.397 8ddc Delete type=0 #75
+2026/07/27-18:17:51.398 8ddc Delete type=2 #76
+2026/07/27-18:17:51.402 8ddc Compacting 1@1 + 2@2 files
+2026/07/27-18:17:51.531 8ddc Generated table #81@1: 35531 keys, 2199321 bytes
+2026/07/27-18:17:51.580 8ddc Generated table #82@1: 11454 keys, 897873 bytes
+2026/07/27-18:17:51.580 8ddc Compacted 1@1 + 2@2 files => 3097194 bytes
+2026/07/27-18:17:51.595 8ddc compacted to: files[ 0 0 2 0 0 0 0 ]
+2026/07/27-18:17:52.496 8ddc Level-0 table #84: started
+2026/07/27-18:17:52.542 8ddc Level-0 table #84: 999164 bytes OK
+2026/07/27-18:17:52.553 8ddc Delete type=2 #77
+2026/07/27-18:17:52.553 8ddc Delete type=2 #78
+2026/07/27-18:17:52.553 8ddc Delete type=0 #79
+2026/07/27-18:17:52.553 8ddc Delete type=2 #80
+2026/07/27-18:17:52.706 9b50 Compacting 1@1 + 2@2 files
+2026/07/27-18:17:52.839 9b50 Generated table #85@1: 39378 keys, 2197739 bytes
+2026/07/27-18:17:52.914 9b50 Generated table #86@1: 14297 keys, 1195180 bytes
+2026/07/27-18:17:52.915 9b50 Compacted 1@1 + 2@2 files => 3392919 bytes
+2026/07/27-18:17:52.929 9b50 compacted to: files[ 0 0 2 0 0 0 0 ]
+2026/07/27-18:17:52.929 9b50 Delete type=2 #84

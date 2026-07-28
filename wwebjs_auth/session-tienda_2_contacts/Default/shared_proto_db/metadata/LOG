@@ -1,0 +1,4 @@
+2026/07/27-18:17:10.926 9b50 Creating DB D:\Node.js\whatsapp-service\wwebjs_auth\session-tienda_2_contacts\Default\shared_proto_db\metadata since it was missing.
+2026/07/27-18:17:10.934 9b50 Reusing MANIFEST D:\Node.js\whatsapp-service\wwebjs_auth\session-tienda_2_contacts\Default\shared_proto_db\metadata/MANIFEST-000001
+2026/07/27-18:17:10.934 9b50 Recovering log #3
+2026/07/27-18:17:10.934 9b50 Reusing old log D:\Node.js\whatsapp-service\wwebjs_auth\session-tienda_2_contacts\Default\shared_proto_db\metadata/000003.log 

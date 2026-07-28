@@ -1,0 +1,4 @@
+2026/07/27-18:17:10.872 5494 Creating DB D:\Node.js\whatsapp-service\wwebjs_auth\session-tienda_2_contacts\Default\Local Storage\leveldb since it was missing.
+2026/07/27-18:17:10.889 5494 Reusing MANIFEST D:\Node.js\whatsapp-service\wwebjs_auth\session-tienda_2_contacts\Default\Local Storage\leveldb/MANIFEST-000001
+2026/07/27-18:17:10.890 5494 Recovering log #3
+2026/07/27-18:17:10.892 5494 Reusing old log D:\Node.js\whatsapp-service\wwebjs_auth\session-tienda_2_contacts\Default\Local Storage\leveldb/000003.log 

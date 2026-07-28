@@ -1,4 +1,6 @@
 node_modules/
 .wwebjs_auth/
 .wwebjs_cache/
+baileys_auth/
+contacts_cache/
 .env
