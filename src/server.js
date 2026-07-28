@@ -1667,7 +1667,7 @@ app.post('/send-media', async (req, res) => {
 
     const session = sessions.get(sessionId);
     if (!session || session.status !== 'ready') {
-        return res.status(400).json({ success: false, error: 'Sesion no lista' });
+        return res.json({ success: true, messages: [] });
     }
 
     try {
